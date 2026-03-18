@@ -32,6 +32,7 @@ mod fs_util;
 mod generate_skills;
 mod helpers;
 mod logging;
+mod mcp_server;
 mod oauth_config;
 mod schema;
 mod services;
@@ -137,6 +138,11 @@ async fn run() -> Result<(), GwsError> {
         return auth_commands::handle_auth_command(&auth_args).await;
     }
 
+    // Handle the `mcp` command
+    if first_arg == "mcp" {
+        return mcp_server::start(&args[1..]).await;
+    }
+
     // Parse service name and optional version override
     let (api_name, version) = parse_service_and_version(&args, &first_arg)?;
 
@@ -226,6 +232,22 @@ async fn run() -> Result<(), GwsError> {
         .ok()
         .flatten()
         .map(|s| s.as_str());
+
+    // Validate file paths against traversal before any I/O.
+    // Use the returned canonical paths so the validated path is the one
+    // actually used for I/O (closes TOCTOU gap).
+    let upload_path_buf = if let Some(p) = upload_path {
+        Some(crate::validate::validate_safe_file_path(p, "--upload")?)
+    } else {
+        None
+    };
+    let output_path_buf = if let Some(p) = output_path {
+        Some(crate::validate::validate_safe_file_path(p, "--output")?)
+    } else {
+        None
+    };
+    let upload_path = upload_path_buf.as_deref().and_then(|p| p.to_str());
+    let output_path = output_path_buf.as_deref().and_then(|p| p.to_str());
 
     let dry_run = matched_args.get_flag("dry-run");
 
